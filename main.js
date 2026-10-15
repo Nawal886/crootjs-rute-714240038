@@ -1,60 +1,81 @@
 
-import { setInner } from "https://cdn.jsdelivr.net/gh/jscroot/lib@0.2.8/element.js";
-
-const statusId = "status";
-
-const peta = L.map("peta");
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "&copy; OpenStreetMap"
-}).addTo(peta);
-
-async function tampilkanRute() {
-  try {
-    const respons = await fetch("./data/OTW%20kampus.geojson");
-
-    if (!respons.ok) {
-      throw new Error("File GeoJSON tidak ditemukan.");
+import {
+    createMap,
+    addGeoJSON,
+    fitMap,
+    getGeoJSON
+  } from "https://cdn.jsdelivr.net/gh/crootjs/lib@0.0.16/map.js";
+  
+  import {
+    findRoute
+  } from "https://cdn.jsdelivr.net/gh/crootjs/lib@0.0.16/georoute.js";
+  
+  import {
+    setInner
+  } from "https://cdn.jsdelivr.net/gh/crootjs/lib@0.0.16/element.js";
+  
+  createMap("peta", {
+    center: [107.5755, -6.8737],
+    zoom: 16
+  });
+  
+  getGeoJSON("./data/OTW%20kampus.geojson", (response) => {
+    if (!response.data) {
+      setInner("status", "GeoJSON gagal dimuat. Periksa lokasi file.");
+      return;
     }
-
-    const geojson = await respons.json();
-
-    const layer = L.geoJSON(geojson, {
-      filter: function (feature) {
-        return feature.geometry &&
-          (feature.geometry.type === "LineString" ||
-           feature.geometry.type === "MultiLineString");
-      },
-      style: function () {
-        return {
-          color: "blue",
-          weight: 6,
-          opacity: 0.85
-        };
-      },
-      onEachFeature: function (feature, layer) {
-        const nama = feature.properties?.nama ||
-                     feature.properties?.Gedung ||
-                     "Rute kos ke kampus";
-
-        layer.bindPopup(nama);
+  
+    const data = response.data;
+  
+    // Ganti koordinat contoh dengan titik kos dan kampus yang tepat.
+    const titikKos = [107.5755, -6.8737];
+    const titikKampus = [107.5772, -6.8752];
+  
+    const jalan = {
+      type: "FeatureCollection",
+      features: data.features.filter((feature) =>
+        ["LineString", "MultiLineString"].includes(
+          feature.geometry?.type
+        )
+      )
+    };
+  
+    // Tampilkan jaringan garis jalan dari GeoJSON.
+    addGeoJSON("peta", jalan, {
+      style: {
+        stroke: "#64748b",
+        strokeWidth: 3
       }
-    }).addTo(peta);
-
-    if (layer.getLayers().length > 0) {
-      peta.fitBounds(layer.getBounds(), { padding: [20, 20] });
-      setInner(statusId, "Rute berhasil ditampilkan.");
-    } else {
-      peta.setView([-6.8737, 107.5755], 16);
+    });
+  
+    const rute = findRoute(titikKos, titikKampus, jalan, {
+      precision: 5
+    });
+  
+    if (!rute) {
       setInner(
-        statusId,
-        "Tidak ditemukan garis LineString. Periksa data GeoJSON kamu."
+        "status",
+        "Rute tidak ditemukan. Periksa koordinat dan sambungan garis jalan."
       );
+      fitMap("peta", jalan);
+      return;
     }
-  } catch (error) {
-    console.error(error);
-    setInner(statusId, "Gagal memuat GeoJSON. Periksa nama dan lokasi file.");
-  }
-}
-
-tampilkanRute();
+  
+    addGeoJSON("peta", rute, {
+      style: {
+        stroke: "#e63946",
+        strokeWidth: 6
+      },
+      popup: () => "Rute kos ke kampus"
+    });
+  
+    fitMap("peta", rute);
+  
+    setInner(
+      "status",
+      `Rute ditemukan! Jarak sepanjang jalan: ${Math.round(
+        rute.properties.distance
+      )} meter.`
+    );
+  });
+  
